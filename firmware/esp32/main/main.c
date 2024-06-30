@@ -108,7 +108,7 @@ void app_main(void) {
         if (voltage < VOLTAGE_THRESHOLD) {
             // Set digital output pin to LOW
             gpio_set_level(DIGITAL_OUTPUT_IO, 0);
-            printf("Voltage below threshold, stop motor.");
+            printf("Pins wet, stop motor.");
 
             // Stop the failsafe timer if it is running
             if (xTimerIsTimerActive(failsafe_timer) == pdTRUE) {
@@ -119,7 +119,7 @@ void app_main(void) {
         } else {
             // Set digital output pin to HIGH
             gpio_set_level(DIGITAL_OUTPUT_IO, 1);
-            printf("Voltage above threshold, start motor.");
+            printf("Pins dry, start motor.");
 
             // Start the failsafe timer if it is not running
             if (xTimerIsTimerActive(failsafe_timer) == pdFALSE) {
