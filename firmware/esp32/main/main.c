@@ -4,6 +4,7 @@
 #include "driver/ledc.h"
 #include "driver/adc.h"
 #include "esp_adc_cal.h"
+#include "freertos/timers.h"
 
 // Define constants for PWM (using LEDC peripheral)
 #define LEDC_TIMER              LEDC_TIMER_0
@@ -26,7 +27,14 @@
 // Define digital output pin
 #define DIGITAL_OUTPUT_IO       (19) // Define the output GPIO for digital output
 
+// Define failsafe timeout in milliseconds
+#define FAILSAFE_TIMEOUT        60000 // 1 minute
+
 static esp_adc_cal_characteristics_t *adc_chars;
+
+static TimerHandle_t failsafe_timer;
+
+bool main_loop = true;
 
 void init_pwm() {
     // Prepare and then apply the LEDC PWM timer configuration
@@ -70,27 +78,56 @@ void init_gpio() {
     gpio_set_direction(DIGITAL_OUTPUT_IO, GPIO_MODE_OUTPUT);
 }
 
+void failsafe_timer_callback(TimerHandle_t xTimer) {
+    // Stop the motor by setting digital output pin to LOW
+    gpio_set_level(DIGITAL_OUTPUT_IO, 0);
+    printf("Failsafe activated: Motor stopped due to timeout.\n");
+    main_loop = false;
+}
+
 void app_main(void) {
     // Initialize PWM, ADC, and GPIO
     init_pwm();
     init_adc();
     init_gpio();
 
-    while (1) {
+    // Create failsafe timer
+    failsafe_timer = xTimerCreate("FailsafeTimer", pdMS_TO_TICKS(FAILSAFE_TIMEOUT), pdFALSE, (void *)0, failsafe_timer_callback);
+    if (failsafe_timer == NULL) {
+        printf("Failed to create failsafe timer\n");
+        return;
+    }
+
+    while (main_loop) {
         // Read ADC and convert the raw value to voltage in mV
         uint32_t adc_reading = adc1_get_raw(ADC_CHANNEL);
         uint32_t voltage = esp_adc_cal_raw_to_voltage(adc_reading, adc_chars);
-        printf("Raw: %d\tVoltage: %dmV\n", (int) adc_reading, (int) voltage);
+        printf("\rRaw: %d\tVoltage: %dmV - ", (int) adc_reading, (int) voltage);
 
-        // Check if voltage is above the threshold
+        // Check if voltage is below the threshold
         if (voltage < VOLTAGE_THRESHOLD) {
             // Set digital output pin to LOW
             gpio_set_level(DIGITAL_OUTPUT_IO, 0);
-            printf("Voltage above threshold, digital pin set to LOW.\n");
+            printf("Voltage below threshold, stop motor.");
+
+            // Stop the failsafe timer if it is running
+            if (xTimerIsTimerActive(failsafe_timer) == pdTRUE) {
+                xTimerStop(failsafe_timer, 0);
+                printf("Failsafe timer stopped.\n");
+            }
+
         } else {
             // Set digital output pin to HIGH
             gpio_set_level(DIGITAL_OUTPUT_IO, 1);
-            printf("Voltage below threshold, digital pin set to HIGH.\n");
+            printf("Voltage above threshold, start motor.");
+
+            // Start the failsafe timer if it is not running
+            if (xTimerIsTimerActive(failsafe_timer) == pdFALSE) {
+                xTimerStart(failsafe_timer, 0);
+                printf("Failsafe timer started.\n");
+            }
+
+
         }
 
         vTaskDelay(pdMS_TO_TICKS(250)); // Delay for a second
