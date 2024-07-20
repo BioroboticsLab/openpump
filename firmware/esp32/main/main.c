@@ -21,8 +21,8 @@
 #define ADC_WIDTH               ADC_WIDTH_BIT_12
 #define DEFAULT_VREF            1100 // Use ADC calibration API to obtain a better estimate
 
-// Define voltage threshold in millivolts
-#define VOLTAGE_THRESHOLD       3000 // tested with water and low concentration sugar solution
+// Define sensor threshold for capacitive sensor
+#define SENSOR_THRESHOLD       2600 // tested with water and low concentration sugar solution
 
 // Define digital output pin
 #define DIGITAL_OUTPUT_IO       (19) // Define the output GPIO for digital output
@@ -101,14 +101,13 @@ void app_main(void) {
     while (main_loop) {
         // Read ADC and convert the raw value to voltage in mV
         uint32_t adc_reading = adc1_get_raw(ADC_CHANNEL);
-        uint32_t voltage = esp_adc_cal_raw_to_voltage(adc_reading, adc_chars);
-        printf("\rRaw: %d\tVoltage: %dmV - ", (int) adc_reading, (int) voltage);
+        printf("\rSensor Reading: %d - ", (int) adc_reading);
 
-        // Check if voltage is below the threshold
-        if (voltage < VOLTAGE_THRESHOLD) {
+        // Check if sensor reading is below the threshold (means capacitive sensor is wet)
+        if (adc_reading < SENSOR_THRESHOLD) {
             // Set digital output pin to LOW
             gpio_set_level(DIGITAL_OUTPUT_IO, 0);
-            printf("Pins wet, stop motor.");
+            printf("Sensor wet, stop motor.");
 
             // Stop the failsafe timer if it is running
             if (xTimerIsTimerActive(failsafe_timer) == pdTRUE) {
@@ -119,7 +118,7 @@ void app_main(void) {
         } else {
             // Set digital output pin to HIGH
             gpio_set_level(DIGITAL_OUTPUT_IO, 1);
-            printf("Pins dry, start motor.");
+            printf("Sensor dry, start motor.");
 
             // Start the failsafe timer if it is not running
             if (xTimerIsTimerActive(failsafe_timer) == pdFALSE) {
