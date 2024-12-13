@@ -22,10 +22,13 @@
 #define DEFAULT_VREF            1100 // Use ADC calibration API to obtain a better estimate
 
 // Define sensor threshold for capacitive sensor
-#define SENSOR_THRESHOLD       2600 // tested with water and low concentration sugar solution
+#define SENSOR_THRESHOLD       2000 // tested with water and low concentration sugar solution
 
 // Define digital output pin
 #define DIGITAL_OUTPUT_IO       (19) // Define the output GPIO for digital output
+
+#define PIN_LEVEL_WHEN_WET       1 // 
+#define PIN_LEVEL_WHEN_DRY       0 //
 
 // Define failsafe timeout in milliseconds
 #define FAILSAFE_TIMEOUT        60000 // 1 minute
@@ -106,7 +109,7 @@ void app_main(void) {
         // Check if sensor reading is below the threshold (means capacitive sensor is wet)
         if (adc_reading < SENSOR_THRESHOLD) {
             // Set digital output pin to LOW
-            gpio_set_level(DIGITAL_OUTPUT_IO, 0);
+            gpio_set_level(DIGITAL_OUTPUT_IO, PIN_LEVEL_WHEN_WET);
             printf("Sensor wet, stop motor.");
 
             // Stop the failsafe timer if it is running
@@ -117,7 +120,7 @@ void app_main(void) {
 
         } else {
             // Set digital output pin to HIGH
-            gpio_set_level(DIGITAL_OUTPUT_IO, 1);
+            gpio_set_level(DIGITAL_OUTPUT_IO, PIN_LEVEL_WHEN_DRY);
             printf("Sensor dry, start motor.");
 
             // Start the failsafe timer if it is not running
