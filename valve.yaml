@@ -1,0 +1,417 @@
+esphome:
+  name: labor
+
+  on_boot:
+    then:
+      - delay: 15s
+      - lambda: |-
+          id(telegram_ready) = true;
+
+substitutions:
+  telegram_bot_token: !secret telegram_bot_token
+  telegram_chat_id: !secret telegram_chat_id
+
+globals:
+  - id: telegram_ready
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: last_pump_1_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  - id: last_pump_2_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  - id: last_pump_3_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  - id: last_pump_4_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  - id: pump_busy
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+logger:
+
+api:
+  password: ""
+  reboot_timeout: 0s
+
+ota:
+  - platform: esphome
+    password: ""
+
+wifi:
+  networks:
+    - ssid: !secret ssid
+      password: !secret password_wifi
+      priority: 0
+
+  ap:
+    ssid: "Labor Fallback Hotspot"
+    password: !secret password_ap
+
+captive_portal:
+
+web_server:
+  port: 80
+  version: 3
+
+http_request:
+
+button:
+  - platform: template
+    name: "Test Telegram"
+    on_press:
+      - http_request.get:
+          url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Test%20message%20from%20ESPHome"
+
+sensor:
+  - platform: adc
+    pin: GPIO32
+    name: "Bodenfeuchtigkeit 1"
+    id: feuchte_raw_32
+    update_interval: 5s
+    attenuation: 12db
+    filters:
+      - multiply: 100
+  - platform: adc
+    pin: GPIO33
+    name: "Bodenfeuchtigkeit 2"
+    id: feuchte_raw_33
+    update_interval: 5s
+    attenuation: 12db
+    filters:
+      - multiply: 100
+  - platform: adc
+    pin: GPIO34
+    name: "Bodenfeuchtigkeit 3"
+    id: feuchte_raw_34
+    update_interval: 5s
+    attenuation: 12db
+    filters:
+      - multiply: 100
+  - platform: adc
+    pin: GPIO35
+    name: "Bodenfeuchtigkeit 4"
+    id: feuchte_raw_35
+    update_interval: 5s
+    attenuation: 12db
+    filters:
+      - multiply: 100
+  - platform: template
+    name: "Topf 1 Cooldown (min)"
+    id: topf_1_cooldown_min
+    update_interval: 5s
+    unit_of_measurement: "min"
+    accuracy_decimals: 0
+    lambda: |-
+      if (id(last_pump_1_ms) == 0) {
+        return 0;
+      }
+      uint32_t elapsed = millis() - id(last_pump_1_ms);
+      if (elapsed >= 3600000UL) {
+        return 0;
+      }
+      return (3600000UL - elapsed) / 60000.0;
+  - platform: template
+    name: "Topf 2 Cooldown (min)"
+    id: topf_2_cooldown_min
+    update_interval: 5s
+    unit_of_measurement: "min"
+    accuracy_decimals: 0
+    lambda: |-
+      if (id(last_pump_2_ms) == 0) {
+        return 0;
+      }
+      uint32_t elapsed = millis() - id(last_pump_2_ms);
+      if (elapsed >= 3600000UL) {
+        return 0;
+      }
+      return (3600000UL - elapsed) / 60000.0;
+  - platform: template
+    name: "Topf 3 Cooldown (min)"
+    id: topf_3_cooldown_min
+    update_interval: 5s
+    unit_of_measurement: "min"
+    accuracy_decimals: 0
+    lambda: |-
+      if (id(last_pump_3_ms) == 0) {
+        return 0;
+      }
+      uint32_t elapsed = millis() - id(last_pump_3_ms);
+      if (elapsed >= 3600000UL) {
+        return 0;
+      }
+      return (3600000UL - elapsed) / 60000.0;
+  - platform: template
+    name: "Topf 4 Cooldown (min)"
+    id: topf_4_cooldown_min
+    update_interval: 5s
+    unit_of_measurement: "min"
+    accuracy_decimals: 0
+    lambda: |-
+      if (id(last_pump_4_ms) == 0) {
+        return 0;
+      }
+      uint32_t elapsed = millis() - id(last_pump_4_ms);
+      if (elapsed >= 3600000UL) {
+        return 0;
+      }
+      return (3600000UL - elapsed) / 60000.0;
+
+number:
+  - platform: template
+    name: "Trocken-Schwellenwert-1"
+    id: trocken_schwelle_1
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    step: 1
+    initial_value: 50
+    restore_value: true
+    mode: slider
+  - platform: template
+    name: "Trocken-Schwellenwert-2"
+    id: trocken_schwelle_2
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    step: 1
+    initial_value: 50
+    restore_value: true
+    mode: slider
+  - platform: template
+    name: "Trocken-Schwellenwert-3"
+    id: trocken_schwelle_3
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    step: 1
+    initial_value: 50
+    restore_value: true
+    mode: slider
+  - platform: template
+    name: "Trocken-Schwellenwert-4"
+    id: trocken_schwelle_4
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    step: 1
+    initial_value: 50
+    restore_value: true
+    mode: slider
+
+switch:
+  - platform: gpio
+    pin: GPIO5
+    id: pumpe
+    name: "Pumpe"
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    pin: GPIO18
+    id: ventil_1
+    name: "Ventil 1"
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    pin: GPIO19
+    id: ventil_2
+    name: "Ventil 2"
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    pin: GPIO21
+    id: ventil_3
+    name: "Ventil 3"
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    pin: GPIO22
+    id: ventil_4
+    name: "Ventil 4"
+    restore_mode: ALWAYS_OFF
+
+binary_sensor:
+  - platform: template
+    name: "Topf 1 zu Trocken laut Benutzergrenze"
+    id: zu_trocken_1
+    lambda: |-
+      return id(feuchte_raw_32).state < id(trocken_schwelle_1).state;
+  - platform: template
+    name: "Topf 2 zu Trocken laut Benutzergrenze"
+    id: zu_trocken_2
+    lambda: |-
+      return id(feuchte_raw_33).state < id(trocken_schwelle_2).state;
+  - platform: template
+    name: "Topf 3 zu Trocken laut Benutzergrenze"
+    id: zu_trocken_3
+    lambda: |-
+      return id(feuchte_raw_34).state < id(trocken_schwelle_3).state;
+  - platform: template
+    name: "Topf 4 zu Trocken laut Benutzergrenze"
+    id: zu_trocken_4
+    lambda: |-
+      return id(feuchte_raw_35).state < id(trocken_schwelle_4).state;
+  - platform: template
+    name: "Pumpe l?uft"
+    lambda: |-
+      return id(pumpe).state;
+
+interval:
+  - interval: 30s
+    then:
+      - if:
+          condition:
+            lambda: |-
+              if (id(pump_busy)) {
+                return false;
+              }
+              if (!id(zu_trocken_1).state) {
+                return false;
+              }
+              if (id(last_pump_1_ms) == 0) {
+                return true;
+              }
+              return (millis() - id(last_pump_1_ms)) >= 3600000UL;
+          then:
+            - lambda: |-
+                id(pump_busy) = true;
+            - script.execute: pumpe_topf_1
+      - if:
+          condition:
+            lambda: |-
+              if (id(pump_busy)) {
+                return false;
+              }
+              if (!id(zu_trocken_2).state) {
+                return false;
+              }
+              if (id(last_pump_2_ms) == 0) {
+                return true;
+              }
+              return (millis() - id(last_pump_2_ms)) >= 3600000UL;
+          then:
+            - lambda: |-
+                id(pump_busy) = true;
+            - script.execute: pumpe_topf_2
+      - if:
+          condition:
+            lambda: |-
+              if (id(pump_busy)) {
+                return false;
+              }
+              if (!id(zu_trocken_3).state) {
+                return false;
+              }
+              if (id(last_pump_3_ms) == 0) {
+                return true;
+              }
+              return (millis() - id(last_pump_3_ms)) >= 3600000UL;
+          then:
+            - lambda: |-
+                id(pump_busy) = true;
+            - script.execute: pumpe_topf_3
+      - if:
+          condition:
+            lambda: |-
+              if (id(pump_busy)) {
+                return false;
+              }
+              if (!id(zu_trocken_4).state) {
+                return false;
+              }
+              if (id(last_pump_4_ms) == 0) {
+                return true;
+              }
+              return (millis() - id(last_pump_4_ms)) >= 3600000UL;
+          then:
+            - lambda: |-
+                id(pump_busy) = true;
+            - script.execute: pumpe_topf_4
+
+script:
+  - id: pumpe_topf_1
+    mode: single
+    then:
+      - lambda: |-
+          id(last_pump_1_ms) = millis();
+      - switch.turn_off: ventil_2
+      - switch.turn_off: ventil_3
+      - switch.turn_off: ventil_4
+      - switch.turn_on: ventil_1
+      - switch.turn_on: pumpe
+      - http_request.get:
+          url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%201%20started%20pumping"
+      - delay: 30s
+      - switch.turn_off: pumpe
+      - switch.turn_off: ventil_1
+      - http_request.get:
+          url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%201%20stopped%20pumping"
+      - lambda: |-
+          id(pump_busy) = false;
+  - id: pumpe_topf_2
+    mode: single
+    then:
+      - lambda: |-
+          id(last_pump_2_ms) = millis();
+      - switch.turn_off: ventil_1
+      - switch.turn_off: ventil_3
+      - switch.turn_off: ventil_4
+      - switch.turn_on: ventil_2
+      - switch.turn_on: pumpe
+      - http_request.get:
+          url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%202%20started%20pumping"
+      - delay: 30s
+      - switch.turn_off: pumpe
+      - switch.turn_off: ventil_2
+      - http_request.get:
+          url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%202%20stopped%20pumping"
+      - lambda: |-
+          id(pump_busy) = false;
+  - id: pumpe_topf_3
+    mode: single
+    then:
+      - lambda: |-
+          id(last_pump_3_ms) = millis();
+      - switch.turn_off: ventil_1
+      - switch.turn_off: ventil_2
+      - switch.turn_off: ventil_4
+      - switch.turn_on: ventil_3
+      - switch.turn_on: pumpe
+      - http_request.get:
+          url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%203%20started%20pumping"
+      - delay: 30s
+      - switch.turn_off: pumpe
+      - switch.turn_off: ventil_3
+      - http_request.get:
+          url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%203%20stopped%20pumping"
+      - lambda: |-
+          id(pump_busy) = false;
+  - id: pumpe_topf_4
+    mode: single
+    then:
+      - lambda: |-
+          id(last_pump_4_ms) = millis();
+      - switch.turn_off: ventil_1
+      - switch.turn_off: ventil_2
+      - switch.turn_off: ventil_3
+      - switch.turn_on: ventil_4
+      - switch.turn_on: pumpe
+      - http_request.get:
+          url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%204%20started%20pumping"
+      - delay: 30s
+      - switch.turn_off: pumpe
+      - switch.turn_off: ventil_4
+      - http_request.get:
+          url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%204%20stopped%20pumping"
+      - lambda: |-
+          id(pump_busy) = false;
