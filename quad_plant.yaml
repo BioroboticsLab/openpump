@@ -1,0 +1,358 @@
+esphome:
+  name: labor
+
+  on_boot:
+    then:
+      - delay: 15s
+      - lambda: |-
+          id(telegram_ready) = true;
+
+substitutions:
+  telegram_bot_token: !secret telegram_bot_token
+  telegram_chat_id: !secret telegram_chat_id
+
+globals:
+  - id: telegram_ready
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: last_pump_1_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  - id: last_pump_2_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  - id: last_pump_3_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  - id: last_pump_4_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  password: ""
+  reboot_timeout: 0s
+
+ota:
+  - platform: esphome
+    password: ""
+
+wifi:
+  networks:
+    - ssid: !secret ssid
+      password: !secret password_wifi
+      priority: 0
+
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Labor Fallback Hotspot"
+    password: !secret password_ap
+
+captive_portal: 
+
+web_server:
+  port: 80
+  version: 3
+
+http_request:
+
+button:
+  - platform: template
+    name: "Test Telegram"
+    on_press:
+      - http_request.get:
+          url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Test%20message%20from%20ESPHome"
+
+# 🌱 Kapazitiver Sensor auf GPIO34
+sensor:
+  - platform: adc
+    pin: GPIO32
+    name: "Bodenfeuchtigkeit 1"
+    id: feuchte_raw_32
+    update_interval: 1s
+    attenuation: 12db  # Für ESP32 wichtig bei 0–3.3V Bereich
+    filters:
+      - multiply: 100
+  - platform: adc
+    pin: GPIO33
+    name: "Bodenfeuchtigkeit 2"
+    id: feuchte_raw_33
+    update_interval: 1s
+    attenuation: 12db  # Für ESP32 wichtig bei 0–3.3V Bereich
+    filters:
+      - multiply: 100
+  - platform: adc
+    pin: GPIO34
+    name: "Bodenfeuchtigkeit 3"
+    id: feuchte_raw_34
+    update_interval: 1s
+    attenuation: 12db  # Für ESP32 wichtig bei 0–3.3V Bereich
+    filters:
+      - multiply: 100
+  - platform: adc
+    pin: GPIO35
+    name: "Bodenfeuchtigkeit 4"
+    id: feuchte_raw_35
+    update_interval: 1s
+    attenuation: 12db  # Für ESP32 wichtig bei 0–3.3V Bereich
+    filters:
+      - multiply: 100
+number:
+  - platform: template
+    name: "Trocken-Schwellenwert-1"
+    id: trocken_schwelle_1
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    step: 1
+    initial_value: 50
+    restore_value: true
+    mode: slider
+  - platform: template
+    name: "Trocken-Schwellenwert-2"
+    id: trocken_schwelle_2
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    step: 1
+    initial_value: 50
+    restore_value: true
+    mode: slider
+  - platform: template
+    name: "Trocken-Schwellenwert-3"
+    id: trocken_schwelle_3
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    step: 1
+    initial_value: 50
+    restore_value: true
+    mode: slider
+  - platform: template
+    name: "Trocken-Schwellenwert-4"
+    id: trocken_schwelle_4
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    step: 1
+    initial_value: 50
+    restore_value: true
+    mode: slider
+# ⚡ Relais an GPIO4 (D2 bei vielen Boards)
+switch:
+  - platform: gpio
+    pin: GPIO5
+    id: relais5
+    name: "Pumpe 1"
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    pin: GPIO18
+    id: relais18
+    name: "Pumpe 2"
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    pin: GPIO19
+    id: relais19
+    name: "Pumpe 3"
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    pin: GPIO21
+    id: relais21
+    name: "Pumpe 4"
+    restore_mode: ALWAYS_OFF
+  
+# 💡 Logik: Vergleicht Sensorwert mit Benutzergrenze
+binary_sensor:
+  - platform: template
+    name: "Topf 1 zu Trocken laut Benutzergrenze"
+    id: zu_trocken_1
+    lambda: |-
+      if (id(feuchte_raw_32).state < id(trocken_schwelle_1).state) {
+        return true;
+      } else {
+        return false;
+      }
+  - platform: template
+    name: "Topf 2 zu Trocken laut Benutzergrenze"
+    id: zu_trocken_2
+    lambda: |-
+      if (id(feuchte_raw_33).state < id(trocken_schwelle_2).state) {
+        return true;
+      } else {
+        return false;
+      }
+  - platform: template
+    name: "Topf 3 zu Trocken laut Benutzergrenze"
+    id: zu_trocken_3
+    lambda: |-
+      if (id(feuchte_raw_34).state < id(trocken_schwelle_3).state) {
+        return true;
+      } else {
+        return false;
+      }
+  - platform: template
+    name: "Topf 4 zu Trocken laut Benutzergrenze"
+    id: zu_trocken_4
+    lambda: |-
+      if (id(feuchte_raw_35).state < id(trocken_schwelle_4).state) {
+        return true;
+      } else {
+        return false;
+      }
+  - platform: template
+    name: "Pumpe 1 l?uft"
+    lambda: |-
+      return id(relais5).state;
+  - platform: template
+    name: "Pumpe 2 l?uft"
+    lambda: |-
+      return id(relais18).state;
+  - platform: template
+    name: "Pumpe 3 l?uft"
+    lambda: |-
+      return id(relais19).state;
+  - platform: template
+    name: "Pumpe 4 l?uft"
+    lambda: |-
+      return id(relais21).state;
+
+interval:
+  - interval: 30s
+    then:
+      - if:
+          condition:
+            binary_sensor.is_on: zu_trocken_1
+          then:
+            - script.execute: pumpe_1_zyklus
+      - if:
+          condition:
+            binary_sensor.is_on: zu_trocken_2
+          then:
+            - script.execute: pumpe_2_zyklus
+      - if:
+          condition:
+            binary_sensor.is_on: zu_trocken_3
+          then:
+            - script.execute: pumpe_3_zyklus
+      - if:
+          condition:
+            binary_sensor.is_on: zu_trocken_4
+          then:
+            - script.execute: pumpe_4_zyklus
+
+script:
+  - id: pumpe_1_zyklus
+    mode: single
+    then:
+      - while:
+          condition:
+            binary_sensor.is_on: zu_trocken_1
+          then:
+            - if:
+                condition:
+                  lambda: |-
+                    if (id(last_pump_1_ms) == 0) {
+                      return true;
+                    }
+                    return (millis() - id(last_pump_1_ms)) >= 3600000UL;
+                then:
+                  - lambda: |-
+                      id(last_pump_1_ms) = millis();
+                  - switch.turn_on: relais5
+                  - http_request.get:
+                      url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%201%20started%20pumping"
+                  - delay: 30s
+                  - switch.turn_off: relais5
+                  - http_request.get:
+                      url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%201%20stopped%20pumping"
+            - delay: 5s
+  - id: pumpe_2_zyklus
+    mode: single
+    then:
+      - while:
+          condition:
+            binary_sensor.is_on: zu_trocken_2
+          then:
+            - if:
+                condition:
+                  lambda: |-
+                    if (id(last_pump_2_ms) == 0) {
+                      return true;
+                    }
+                    return (millis() - id(last_pump_2_ms)) >= 3600000UL;
+                then:
+                  - lambda: |-
+                      id(last_pump_2_ms) = millis();
+                  - switch.turn_on: relais18
+                  - http_request.get:
+                      url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%202%20started%20pumping"
+                  - delay: 30s
+                  - switch.turn_off: relais18
+                  - http_request.get:
+                      url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%202%20stopped%20pumping"
+            - delay: 5s
+  - id: pumpe_3_zyklus
+    mode: single
+    then:
+      - while:
+          condition:
+            binary_sensor.is_on: zu_trocken_3
+          then:
+            - if:
+                condition:
+                  lambda: |-
+                    if (id(last_pump_3_ms) == 0) {
+                      return true;
+                    }
+                    return (millis() - id(last_pump_3_ms)) >= 3600000UL;
+                then:
+                  - lambda: |-
+                      id(last_pump_3_ms) = millis();
+                  - switch.turn_on: relais19
+                  - http_request.get:
+                      url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%203%20started%20pumping"
+                  - delay: 30s
+                  - switch.turn_off: relais19
+                  - http_request.get:
+                      url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%203%20stopped%20pumping"
+            - delay: 5s
+  - id: pumpe_4_zyklus
+    mode: single
+    then:
+      - while:
+          condition:
+            binary_sensor.is_on: zu_trocken_4
+          then:
+            - if:
+                condition:
+                  lambda: |-
+                    if (id(last_pump_4_ms) == 0) {
+                      return true;
+                    }
+                    return (millis() - id(last_pump_4_ms)) >= 3600000UL;
+                then:
+                  - lambda: |-
+                      id(last_pump_4_ms) = millis();
+                  - switch.turn_on: relais21
+                  - http_request.get:
+                      url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%204%20started%20pumping"
+                  - delay: 30s
+                  - switch.turn_off: relais21
+                  - http_request.get:
+                      url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%204%20stopped%20pumping"
+            - delay: 5s
+    
