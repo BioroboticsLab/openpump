@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-DEVICE="${1:-labor.local}"
-CONFIG="valve.yaml"
+CONFIG="${1:-valve.yaml}"
+DEVICE="${2:-labor.local}"
 
 echo "🔧 Compiling $CONFIG..."
 python3 -m esphome compile "$CONFIG"

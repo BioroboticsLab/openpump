@@ -118,6 +118,9 @@ wifi:
     - ssid: !secret ssid
       password: !secret password_wifi
       priority: 0
+  power_save_mode: none
+  fast_connect: true
+  reboot_timeout: 0s
 
   on_connect:
     then:
@@ -215,7 +218,7 @@ sensor:
           alpha: 0.1
           send_every: 1
   - platform: adc
-    pin: GPIO34
+    pin: GPIO39
     name: "Bodenfeuchtigkeit 3"
     id: feuchte_3
     update_interval: 1s
@@ -356,7 +359,7 @@ number:
     unit_of_measurement: "s"
     mode: slider
 
-# ── Actuators ──────────────────────────────────────────────────────────
+# ── Actuators (active-HIGH relays — do NOT use inverted: true) ────────
 switch:
   - platform: gpio
     pin: GPIO17
@@ -364,22 +367,22 @@ switch:
     name: "Pumpe"
     restore_mode: ALWAYS_OFF
   - platform: gpio
-    pin: GPIO18
+    pin: GPIO22
     id: ventil_1
     name: "Ventil 1"
     restore_mode: ALWAYS_OFF
   - platform: gpio
-    pin: GPIO19
+    pin: GPIO21
     id: ventil_2
     name: "Ventil 2"
     restore_mode: ALWAYS_OFF
   - platform: gpio
-    pin: GPIO21
+    pin: GPIO19
     id: ventil_3
     name: "Ventil 3"
     restore_mode: ALWAYS_OFF
   - platform: gpio
-    pin: GPIO22
+    pin: GPIO18
     id: ventil_4
     name: "Ventil 4"
     restore_mode: ALWAYS_OFF

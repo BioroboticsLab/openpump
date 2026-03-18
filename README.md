@@ -39,13 +39,16 @@ An open-source, sensor-driven plant watering system built on [ESPHome](https://e
 |------|----------|
 | GPIO32 | Soil-moisture sensor 1 (ADC) |
 | GPIO33 | Soil-moisture sensor 2 (ADC) |
-| GPIO34 | Soil-moisture sensor 3 (ADC) |
+| GPIO39 | Soil-moisture sensor 3 (ADC) |
 | GPIO35 | Soil-moisture sensor 4 (ADC) |
-| GPIO5 | Pump |
-| GPIO18 | Valve 1 |
-| GPIO19 | Valve 2 |
-| GPIO21 | Valve 3 |
-| GPIO22 | Valve 4 |
+| GPIO17 | Pump (active-HIGH) |
+| GPIO22 | Valve 1 (active-HIGH) |
+| GPIO21 | Valve 2 (active-HIGH) |
+| GPIO19 | Valve 3 (active-HIGH) |
+| GPIO18 | Valve 4 (active-HIGH) |
+| GPIO2  | Status LED (active-LOW) |
+
+> ⚠️ **Relay polarity:** The pump and valve relays are **active-HIGH** — the GPIO drives the relay directly without inversion. Do **not** set `inverted: true` in the switch config. If the pump runs when the software says OFF, check the relay wiring (COM/NO vs COM/NC).
 
 ## Getting Started
 
@@ -81,6 +84,11 @@ esphome run valve.yaml
 
 # Subsequent updates can be done OTA
 esphome run valve.yaml --device labor.local
+
+# Or use the helper script
+./flash.sh                              # default: valve.yaml → labor.local
+./flash.sh tests/test_actuators.yaml     # flash a test config
+./flash.sh valve.yaml 10.94.201.232      # flash to a specific IP
 ```
 
 ### Home Assistant
@@ -98,25 +106,34 @@ The device advertises itself via the ESPHome native API. In Home Assistant, go t
 3. A **1-hour cooldown** prevents the same zone from being watered again too soon.
 4. The `pump_busy` flag ensures only one zone can pump at a time.
 5. A **heartbeat** message is sent via Telegram every 2 hours with the device's uptime.
-6. The **Telegram bot** polls for incoming commands every 20 seconds — send `value pot 1` through `value pot 4` to get a live moisture reading.
+6. The **Telegram bot** polls for incoming commands every 5 seconds — send `value pod 1` through `value pod 4` to get a live moisture reading.
 7. The **status LED** blinks during boot and Wi-Fi reconnect, and stays solid once connected.
+8. If a zone stays **dry for 24 hours**, a persistent dry alert is sent via Telegram.
 
 ## Sensor Calibration
 
-The sensors output a raw ADC value which is linearly mapped to 0–100 %. The default calibration assumes:
-- **0 → 100 %** (sensor in water)
-- **330 → 0 %** (sensor in dry air)
+The sensors output a raw ADC voltage which is scaled (×100) and then linearly mapped to 0–100 % using:
 
-To tune for your sensors, update `cal_wet` and `cal_dry` in the `substitutions` section of `valve.yaml`.
+```
+y = -0.53125 × x + 111.25
+```
+
+This maps approximately 21 → 100 % (wet) and 209 → 0 % (dry). To tune for your sensors, adjust the formula coefficients in the `lambda` filter of each sensor in `valve.yaml`.
 
 ## Project Structure
 
 ```
 openpump/
-├── valve.yaml          # ESPHome configuration (main file)
-├── secrets.yaml        # Wi-Fi & Telegram credentials (not tracked)
-├── LICENSE             # Apache 2.0
-└── README.md           # This file
+├── valve.yaml                    # ESPHome configuration (main file)
+├── secrets.yaml                  # Wi-Fi & Telegram credentials (not tracked)
+├── flash.sh                      # Build + OTA flash helper script
+├── tests/
+│   ├── secrets.yaml              # → symlink to ../secrets.yaml
+│   ├── test_actuators.yaml       # Minimal pump/valve toggle test
+│   ├── test_sensors.yaml         # Sensor + actuator test
+│   └── test_gpio_scan.yaml       # All ADC1 GPIO scan
+├── LICENSE                       # Apache 2.0
+└── README.md                     # This file
 ```
 
 ## License
