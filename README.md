@@ -12,7 +12,7 @@ An open-source, sensor-driven plant watering system built on [ESPHome](https://e
 - **Cooldown protection** — 1-hour cooldown per zone prevents overwatering
 - **Pump mutex** — only one zone can pump at a time, preventing pressure issues
 - **Telegram alerts** — instant notifications when pumping starts/stops
-- **Telegram bot commands** — send `value pod 1` to query live moisture readings
+- **Telegram bot commands** — send `status` for a full report, or `value pod 1` to query a single sensor
 - **Heartbeat** — periodic uptime report via Telegram (every 2 hours)
 - **Status LED** — blinks during boot/Wi-Fi reconnect, solid when connected
 - **Wi-Fi events** — Telegram notification on connect; LED feedback on disconnect
@@ -106,7 +106,7 @@ The device advertises itself via the ESPHome native API. In Home Assistant, go t
 3. A **1-hour cooldown** prevents the same zone from being watered again too soon.
 4. The `pump_busy` flag ensures only one zone can pump at a time.
 5. A **heartbeat** message is sent via Telegram every 2 hours with the device's uptime.
-6. The **Telegram bot** polls for incoming commands every 5 seconds — send `value pod 1` through `value pod 4` to get a live moisture reading.
+6. The **Telegram bot** polls for incoming commands every 5 seconds — send `status` for a full report (all sensors, thresholds, cooldowns, pump state, uptime), or `value pod 1` through `value pod 4` for a single reading.
 7. The **status LED** blinks during boot and Wi-Fi reconnect, and stays solid once connected.
 8. If a zone stays **dry for 24 hours**, a persistent dry alert is sent via Telegram.
 

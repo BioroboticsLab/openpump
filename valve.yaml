@@ -792,9 +792,44 @@ script:
             - delay: 500ms
 
   # ── Telegram Command Handler ────────────────────────────────────────
-  # Responds to Telegram commands: "value pod X" → moisture reading.
+  # Commands: "status" → full report, "value pod X" → single reading.
   - id: send_telegram
     then:
+      - if:
+          condition:
+            lambda: 'return id(telegram_message)=="status";'
+          then:
+            - http_request.get:
+                url: !lambda |-
+                  char url[512];
+                  int up = (int) id(esp_uptime).state;
+                  int h = up / 3600, m = (up % 3600) / 60, s = up % 60;
+
+                  auto cd = [](uint32_t last) -> int {
+                    if (last == 0) return 0;
+                    uint32_t elapsed = millis() - last;
+                    uint32_t cooldown = ${cooldown_ms};
+                    return (elapsed >= cooldown) ? 0 : (int)((cooldown - elapsed) / 60000);
+                  };
+
+                  snprintf(url, sizeof(url),
+                      "https://api.telegram.org/bot%s/sendMessage?chat_id=%s&parse_mode=HTML&text="
+                      "<b>OpenPump%%20Status</b>%%0A"
+                      "P1:%%20%.0f%%%%20(T:%.0f%%%%)%%20CD:%dmin%%0A"
+                      "P2:%%20%.0f%%%%20(T:%.0f%%%%)%%20CD:%dmin%%0A"
+                      "P3:%%20%.0f%%%%20(T:%.0f%%%%)%%20CD:%dmin%%0A"
+                      "P4:%%20%.0f%%%%20(T:%.0f%%%%)%%20CD:%dmin%%0A"
+                      "Pump:%%20%s%%20|%%20Dur:%%20%.0fs%%0A"
+                      "Up:%%20%dh%%20%dm%%20%ds",
+                      "${telegram_bot_token}", "${telegram_chat_id}",
+                      id(feuchte_1).state, id(trocken_schwelle_1).state, cd(id(last_pump_1_ms)),
+                      id(feuchte_2).state, id(trocken_schwelle_2).state, cd(id(last_pump_2_ms)),
+                      id(feuchte_3).state, id(trocken_schwelle_3).state, cd(id(last_pump_3_ms)),
+                      id(feuchte_4).state, id(trocken_schwelle_4).state, cd(id(last_pump_4_ms)),
+                      id(pump_busy) ? "BUSY" : "idle",
+                      id(pumpdauer).state,
+                      h, m, s);
+                  return std::string(url);
       - if:
           condition:
             lambda: 'return id(telegram_message)=="value pod 1";'
@@ -855,3 +890,4 @@ script:
                       "${telegram_chat_id}",
                       id(feuchte_4).state);
                   return std::string(url);
+
