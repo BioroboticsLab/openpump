@@ -1,6 +1,26 @@
-secrets.yaml
-*.log
+# === Build artifacts ===
+build/
 *.bin
+*.elf
+*.a
+*.o
+*.obj
+*.map
+*.log
+sdkconfig
+sdkconfig.old
+
+# === ESPHome ===
+.esphome/
+secrets.yaml
+
+# === ESP-IDF ===
+firmware/esp32/build/
+
+# === OS / IDE ===
+.DS_Store
+.vscode/
+
+# === Python ===
 __pycache__/
 *.pyc
-.vscode/

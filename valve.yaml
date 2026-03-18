@@ -3,16 +3,49 @@ esphome:
 
   on_boot:
     then:
-      - delay: 15s
+      - script.execute: led_boot_blink
+      - delay: 30s
       - lambda: |-
           id(telegram_ready) = true;
 
+# ── Substitutions ──────────────────────────────────────────────────────
+# Centralised constants — change here, applied everywhere.
 substitutions:
   telegram_bot_token: !secret telegram_bot_token
   telegram_chat_id: !secret telegram_chat_id
 
+  # Timing (used in lambdas as milliseconds)
+  cooldown_ms: "3600000"          # 1 hour between pumps per zone
+  sensor_update_interval: "5s"
+  check_interval: "30s"
+  heartbeat_interval: "2h"        # uptime report via Telegram
+  telegram_poll_interval: "20s"   # how often to poll for bot commands
+
+  # Sensor calibration (raw ADC × 100 → percentage)
+  # Tune these two points for your sensors:
+  #   cal_wet  = raw value when sensor is in water  → maps to 100 %
+  #   cal_dry  = raw value when sensor is in dry air → maps to   0 %
+  cal_wet: "0"
+  cal_dry: "330"
+
+  # Status LED pin (active-low on most ESP32 DevKits)
+  led_pin: "GPIO2"
+
+# ── Globals ────────────────────────────────────────────────────────────
 globals:
   - id: telegram_ready
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: telegram_message
+    type: std::string
+    restore_value: false
+    initial_value: '""'
+  - id: telegram_last_update_id
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  - id: telegram_message_ready
     type: bool
     restore_value: false
     initial_value: 'false'
@@ -32,31 +65,87 @@ globals:
     type: uint32_t
     restore_value: false
     initial_value: '0'
+  - id: dry_1_start_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  - id: dry_2_start_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  - id: dry_3_start_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  - id: dry_4_start_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  - id: dry_1_alerted
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: dry_2_alerted
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: dry_3_alerted
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: dry_4_alerted
+    type: bool
+    restore_value: false
+    initial_value: 'false'
   - id: pump_busy
     type: bool
     restore_value: false
     initial_value: 'false'
 
+# ── Board ──────────────────────────────────────────────────────────────
 esp32:
   board: esp32dev
   framework:
     type: esp-idf
 
 logger:
+  level: WARN
 
+# ── Network & Security ────────────────────────────────────────────────
 api:
-  password: ""
+  encryption:
+    key: !secret api_key
   reboot_timeout: 0s
 
 ota:
   - platform: esphome
-    password: ""
+    password: !secret ota_password
 
 wifi:
   networks:
     - ssid: !secret ssid
       password: !secret password_wifi
       priority: 0
+
+  power_save_mode: none
+  fast_connect: true
+  reboot_timeout: 0s
+
+  on_connect:
+    then:
+      - script.stop: led_boot_blink
+      - light.turn_on: status_led
+      - if:
+          condition:
+            lambda: 'return id(telegram_ready);'
+          then:
+            - http_request.get:
+                url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=ESP%20connected"
+
+  on_disconnect:
+    then:
+      - light.turn_off: status_led
+      - script.execute: led_boot_blink
 
   ap:
     ssid: "Labor Fallback Hotspot"
@@ -69,7 +158,9 @@ web_server:
   version: 3
 
 http_request:
+  timeout: 5s
 
+# ── Manual Controls ───────────────────────────────────────────────────
 button:
   - platform: template
     name: "Test Telegram"
@@ -77,103 +168,142 @@ button:
       - http_request.get:
           url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Test%20message%20from%20ESPHome"
 
+# ── Status LED ─────────────────────────────────────────────────────────
+output:
+  - platform: gpio
+    pin: ${led_pin}
+    id: led_output
+
+light:
+  - platform: binary
+    name: "Status LED"
+    id: status_led
+    output: led_output
+
+# ── Soil-Moisture Sensors (ADC → calibrated %) ───────────────────────
 sensor:
   - platform: adc
     pin: GPIO32
     name: "Bodenfeuchtigkeit 1"
-    id: feuchte_raw_32
-    update_interval: 5s
+    id: feuchte_1
+    update_interval: ${sensor_update_interval}
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
     attenuation: 12db
     filters:
       - multiply: 100
+      - calibrate_linear:
+          - ${cal_wet} -> 100
+          - ${cal_dry} -> 0
+      - clamp:
+          min_value: 0
+          max_value: 100
   - platform: adc
     pin: GPIO33
     name: "Bodenfeuchtigkeit 2"
-    id: feuchte_raw_33
-    update_interval: 5s
+    id: feuchte_2
+    update_interval: ${sensor_update_interval}
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
     attenuation: 12db
     filters:
       - multiply: 100
+      - calibrate_linear:
+          - ${cal_wet} -> 100
+          - ${cal_dry} -> 0
+      - clamp:
+          min_value: 0
+          max_value: 100
   - platform: adc
     pin: GPIO34
     name: "Bodenfeuchtigkeit 3"
-    id: feuchte_raw_34
-    update_interval: 5s
+    id: feuchte_3
+    update_interval: ${sensor_update_interval}
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
     attenuation: 12db
     filters:
       - multiply: 100
+      - calibrate_linear:
+          - ${cal_wet} -> 100
+          - ${cal_dry} -> 0
+      - clamp:
+          min_value: 0
+          max_value: 100
   - platform: adc
     pin: GPIO35
     name: "Bodenfeuchtigkeit 4"
-    id: feuchte_raw_35
-    update_interval: 5s
+    id: feuchte_4
+    update_interval: ${sensor_update_interval}
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
     attenuation: 12db
     filters:
       - multiply: 100
+      - calibrate_linear:
+          - ${cal_wet} -> 100
+          - ${cal_dry} -> 0
+      - clamp:
+          min_value: 0
+          max_value: 100
+
+  # ── Cooldown timers (read-only, displayed in UI) ───────────────────
   - platform: template
     name: "Topf 1 Cooldown (min)"
     id: topf_1_cooldown_min
-    update_interval: 5s
+    update_interval: ${sensor_update_interval}
     unit_of_measurement: "min"
     accuracy_decimals: 0
     lambda: |-
-      if (id(last_pump_1_ms) == 0) {
-        return 0;
-      }
+      if (id(last_pump_1_ms) == 0) return 0;
       uint32_t elapsed = millis() - id(last_pump_1_ms);
-      if (elapsed >= 3600000UL) {
-        return 0;
-      }
-      return (3600000UL - elapsed) / 60000.0;
+      uint32_t cd = ${cooldown_ms};
+      return (elapsed >= cd) ? 0 : (cd - elapsed) / 60000.0;
   - platform: template
     name: "Topf 2 Cooldown (min)"
     id: topf_2_cooldown_min
-    update_interval: 5s
+    update_interval: ${sensor_update_interval}
     unit_of_measurement: "min"
     accuracy_decimals: 0
     lambda: |-
-      if (id(last_pump_2_ms) == 0) {
-        return 0;
-      }
+      if (id(last_pump_2_ms) == 0) return 0;
       uint32_t elapsed = millis() - id(last_pump_2_ms);
-      if (elapsed >= 3600000UL) {
-        return 0;
-      }
-      return (3600000UL - elapsed) / 60000.0;
+      uint32_t cd = ${cooldown_ms};
+      return (elapsed >= cd) ? 0 : (cd - elapsed) / 60000.0;
   - platform: template
     name: "Topf 3 Cooldown (min)"
     id: topf_3_cooldown_min
-    update_interval: 5s
+    update_interval: ${sensor_update_interval}
     unit_of_measurement: "min"
     accuracy_decimals: 0
     lambda: |-
-      if (id(last_pump_3_ms) == 0) {
-        return 0;
-      }
+      if (id(last_pump_3_ms) == 0) return 0;
       uint32_t elapsed = millis() - id(last_pump_3_ms);
-      if (elapsed >= 3600000UL) {
-        return 0;
-      }
-      return (3600000UL - elapsed) / 60000.0;
+      uint32_t cd = ${cooldown_ms};
+      return (elapsed >= cd) ? 0 : (cd - elapsed) / 60000.0;
   - platform: template
     name: "Topf 4 Cooldown (min)"
     id: topf_4_cooldown_min
-    update_interval: 5s
+    update_interval: ${sensor_update_interval}
     unit_of_measurement: "min"
     accuracy_decimals: 0
     lambda: |-
-      if (id(last_pump_4_ms) == 0) {
-        return 0;
-      }
+      if (id(last_pump_4_ms) == 0) return 0;
       uint32_t elapsed = millis() - id(last_pump_4_ms);
-      if (elapsed >= 3600000UL) {
-        return 0;
-      }
-      return (3600000UL - elapsed) / 60000.0;
+      uint32_t cd = ${cooldown_ms};
+      return (elapsed >= cd) ? 0 : (cd - elapsed) / 60000.0;
 
+  # ── Uptime sensor (used by heartbeat) ─────────────────────────────
+  - platform: uptime
+    name: "Uptime"
+    id: esp_uptime
+    update_interval: 60s
+
+# ── User-Adjustable Parameters ────────────────────────────────────────
 number:
+  # Per-zone dryness thresholds (0–100 %)
   - platform: template
-    name: "Trocken-Schwellenwert-1"
+    name: "Trocken-Schwellenwert 1"
     id: trocken_schwelle_1
     optimistic: true
     min_value: 0
@@ -181,9 +311,10 @@ number:
     step: 1
     initial_value: 50
     restore_value: true
+    unit_of_measurement: "%"
     mode: slider
   - platform: template
-    name: "Trocken-Schwellenwert-2"
+    name: "Trocken-Schwellenwert 2"
     id: trocken_schwelle_2
     optimistic: true
     min_value: 0
@@ -191,9 +322,10 @@ number:
     step: 1
     initial_value: 50
     restore_value: true
+    unit_of_measurement: "%"
     mode: slider
   - platform: template
-    name: "Trocken-Schwellenwert-3"
+    name: "Trocken-Schwellenwert 3"
     id: trocken_schwelle_3
     optimistic: true
     min_value: 0
@@ -201,9 +333,10 @@ number:
     step: 1
     initial_value: 50
     restore_value: true
+    unit_of_measurement: "%"
     mode: slider
   - platform: template
-    name: "Trocken-Schwellenwert-4"
+    name: "Trocken-Schwellenwert 4"
     id: trocken_schwelle_4
     optimistic: true
     min_value: 0
@@ -211,8 +344,23 @@ number:
     step: 1
     initial_value: 50
     restore_value: true
+    unit_of_measurement: "%"
     mode: slider
 
+  # Pump duration — shared across all zones
+  - platform: template
+    name: "Pumpdauer"
+    id: pumpdauer
+    optimistic: true
+    min_value: 5
+    max_value: 120
+    step: 5
+    initial_value: 30
+    restore_value: true
+    unit_of_measurement: "s"
+    mode: slider
+
+# ── Actuators ──────────────────────────────────────────────────────────
 switch:
   - platform: gpio
     pin: GPIO5
@@ -240,178 +388,314 @@ switch:
     name: "Ventil 4"
     restore_mode: ALWAYS_OFF
 
+# ── Dryness Indicators ────────────────────────────────────────────────
 binary_sensor:
   - platform: template
-    name: "Topf 1 zu Trocken laut Benutzergrenze"
+    name: "Topf 1 zu trocken"
     id: zu_trocken_1
     lambda: |-
-      return id(feuchte_raw_32).state < id(trocken_schwelle_1).state;
+      return id(feuchte_1).state < id(trocken_schwelle_1).state;
   - platform: template
-    name: "Topf 2 zu Trocken laut Benutzergrenze"
+    name: "Topf 2 zu trocken"
     id: zu_trocken_2
     lambda: |-
-      return id(feuchte_raw_33).state < id(trocken_schwelle_2).state;
+      return id(feuchte_2).state < id(trocken_schwelle_2).state;
   - platform: template
-    name: "Topf 3 zu Trocken laut Benutzergrenze"
+    name: "Topf 3 zu trocken"
     id: zu_trocken_3
     lambda: |-
-      return id(feuchte_raw_34).state < id(trocken_schwelle_3).state;
+      return id(feuchte_3).state < id(trocken_schwelle_3).state;
   - platform: template
-    name: "Topf 4 zu Trocken laut Benutzergrenze"
+    name: "Topf 4 zu trocken"
     id: zu_trocken_4
     lambda: |-
-      return id(feuchte_raw_35).state < id(trocken_schwelle_4).state;
+      return id(feuchte_4).state < id(trocken_schwelle_4).state;
   - platform: template
-    name: "Pumpe l?uft"
+    name: "Pumpe läuft"
     lambda: |-
       return id(pumpe).state;
 
+# ── Scheduler ──────────────────────────────────────────────────────────
+# Every ${check_interval} seconds, check zones 1→4 sequentially.
+# Only the first eligible zone triggers; pump_busy prevents overlap.
 interval:
-  - interval: 30s
+  - interval: ${check_interval}
     then:
       - if:
           condition:
             lambda: |-
-              if (id(pump_busy)) {
-                return false;
-              }
-              if (!id(zu_trocken_1).state) {
-                return false;
-              }
-              if (id(last_pump_1_ms) == 0) {
-                return true;
-              }
-              return (millis() - id(last_pump_1_ms)) >= 3600000UL;
+              if (id(pump_busy)) return false;
+              if (!id(zu_trocken_1).state) return false;
+              if (id(last_pump_1_ms) == 0) return true;
+              return (millis() - id(last_pump_1_ms)) >= ${cooldown_ms}UL;
           then:
-            - lambda: |-
-                id(pump_busy) = true;
+            - lambda: 'id(pump_busy) = true;'
             - script.execute: pumpe_topf_1
       - if:
           condition:
             lambda: |-
-              if (id(pump_busy)) {
-                return false;
-              }
-              if (!id(zu_trocken_2).state) {
-                return false;
-              }
-              if (id(last_pump_2_ms) == 0) {
-                return true;
-              }
-              return (millis() - id(last_pump_2_ms)) >= 3600000UL;
+              if (id(pump_busy)) return false;
+              if (!id(zu_trocken_2).state) return false;
+              if (id(last_pump_2_ms) == 0) return true;
+              return (millis() - id(last_pump_2_ms)) >= ${cooldown_ms}UL;
           then:
-            - lambda: |-
-                id(pump_busy) = true;
+            - lambda: 'id(pump_busy) = true;'
             - script.execute: pumpe_topf_2
       - if:
           condition:
             lambda: |-
-              if (id(pump_busy)) {
-                return false;
-              }
-              if (!id(zu_trocken_3).state) {
-                return false;
-              }
-              if (id(last_pump_3_ms) == 0) {
-                return true;
-              }
-              return (millis() - id(last_pump_3_ms)) >= 3600000UL;
+              if (id(pump_busy)) return false;
+              if (!id(zu_trocken_3).state) return false;
+              if (id(last_pump_3_ms) == 0) return true;
+              return (millis() - id(last_pump_3_ms)) >= ${cooldown_ms}UL;
           then:
-            - lambda: |-
-                id(pump_busy) = true;
+            - lambda: 'id(pump_busy) = true;'
             - script.execute: pumpe_topf_3
       - if:
           condition:
             lambda: |-
-              if (id(pump_busy)) {
-                return false;
-              }
-              if (!id(zu_trocken_4).state) {
-                return false;
-              }
-              if (id(last_pump_4_ms) == 0) {
-                return true;
-              }
-              return (millis() - id(last_pump_4_ms)) >= 3600000UL;
+              if (id(pump_busy)) return false;
+              if (!id(zu_trocken_4).state) return false;
+              if (id(last_pump_4_ms) == 0) return true;
+              return (millis() - id(last_pump_4_ms)) >= ${cooldown_ms}UL;
           then:
-            - lambda: |-
-                id(pump_busy) = true;
+            - lambda: 'id(pump_busy) = true;'
             - script.execute: pumpe_topf_4
 
+  # ── Heartbeat — send uptime to Telegram every ${heartbeat_interval} ──
+  - interval: ${heartbeat_interval}
+    then:
+      - if:
+          condition:
+            and:
+              - wifi.connected
+              - lambda: 'return id(telegram_ready);'
+          then:
+            - http_request.get:
+                url: !lambda |-
+                  char url[256];
+                  int total = (int) id(esp_uptime).state;
+                  int hours = total / 3600;
+                  int minutes = (total % 3600) / 60;
+                  int seconds = total % 60;
+                  snprintf(
+                      url,
+                      sizeof(url),
+                      "https://api.telegram.org/bot%s/sendMessage?chat_id=%s&text=Heartbeat%%20uptime%%20%dh%%20%dm%%20%ds",
+                      "${telegram_bot_token}",
+                      "${telegram_chat_id}",
+                      hours,
+                      minutes,
+                      seconds);
+                  return std::string(url);
+
+  # ── Telegram Bot Command Polling ─────────────────────────────────────
+  # Polls getUpdates every ${telegram_poll_interval} for incoming commands.
+  - interval: ${telegram_poll_interval}
+    then:
+      - if:
+          condition:
+            wifi.connected
+          then:
+            - http_request.get:
+                url: !lambda |-
+                  char url[256];
+                  uint32_t offset = id(telegram_last_update_id) + 1;
+                  snprintf(
+                      url,
+                      sizeof(url),
+                      "https://api.telegram.org/bot%s/getUpdates?offset=%u&limit=1&timeout=0",
+                      "${telegram_bot_token}",
+                      offset);
+                  return std::string(url);
+                capture_response: true
+                on_response:
+                  then:
+                    - lambda: |-
+                        auto parsed = json::parse_json(body);
+                        if (parsed.containsKey("result")) {
+                          auto result_array = parsed["result"].as<JsonArray>();
+                          if (result_array.size() > 0) {
+                            auto update_obj = result_array[0].as<JsonObject>();
+                            if (update_obj.containsKey("update_id")) {
+                              id(telegram_last_update_id) = update_obj["update_id"];
+                            }
+                            auto msg_obj = update_obj["message"].as<JsonObject>();
+                            if (msg_obj.containsKey("text")) {
+                              std::string text = std::string(msg_obj["text"]);
+                              id(telegram_message) = text;
+                              id(telegram_message_ready) = true;
+                            }
+                          }
+                        }
+                    - if:
+                        condition:
+                          lambda: 'return id(telegram_message_ready);'
+                        then:
+                          - script.execute: handle_telegram_command
+                          - lambda: 'id(telegram_message_ready) = false;'
+
+# ── Pump Scripts (one per zone) ────────────────────────────────────────
+# Each script: close other valves → open target valve → pump for
+# id(pumpdauer) seconds → close everything → notify via Telegram.
 script:
   - id: pumpe_topf_1
     mode: single
     then:
-      - lambda: |-
-          id(last_pump_1_ms) = millis();
+      - lambda: 'id(last_pump_1_ms) = millis();'
       - switch.turn_off: ventil_2
       - switch.turn_off: ventil_3
       - switch.turn_off: ventil_4
       - switch.turn_on: ventil_1
       - switch.turn_on: pumpe
-      - http_request.get:
-          url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%201%20started%20pumping"
-      - delay: 30s
+      - if:
+          condition:
+            lambda: 'return id(telegram_ready);'
+          then:
+            - http_request.get:
+                url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pot%201%20started%20pumping"
+      - delay: !lambda 'return id(pumpdauer).state * 1000;'
       - switch.turn_off: pumpe
       - switch.turn_off: ventil_1
-      - http_request.get:
-          url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%201%20stopped%20pumping"
-      - lambda: |-
-          id(pump_busy) = false;
+      - if:
+          condition:
+            lambda: 'return id(telegram_ready);'
+          then:
+            - http_request.get:
+                url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pot%201%20stopped%20pumping"
+      - lambda: 'id(pump_busy) = false;'
+
   - id: pumpe_topf_2
     mode: single
     then:
-      - lambda: |-
-          id(last_pump_2_ms) = millis();
+      - lambda: 'id(last_pump_2_ms) = millis();'
       - switch.turn_off: ventil_1
       - switch.turn_off: ventil_3
       - switch.turn_off: ventil_4
       - switch.turn_on: ventil_2
       - switch.turn_on: pumpe
-      - http_request.get:
-          url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%202%20started%20pumping"
-      - delay: 30s
+      - if:
+          condition:
+            lambda: 'return id(telegram_ready);'
+          then:
+            - http_request.get:
+                url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pot%202%20started%20pumping"
+      - delay: !lambda 'return id(pumpdauer).state * 1000;'
       - switch.turn_off: pumpe
       - switch.turn_off: ventil_2
-      - http_request.get:
-          url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%202%20stopped%20pumping"
-      - lambda: |-
-          id(pump_busy) = false;
+      - if:
+          condition:
+            lambda: 'return id(telegram_ready);'
+          then:
+            - http_request.get:
+                url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pot%202%20stopped%20pumping"
+      - lambda: 'id(pump_busy) = false;'
+
   - id: pumpe_topf_3
     mode: single
     then:
-      - lambda: |-
-          id(last_pump_3_ms) = millis();
+      - lambda: 'id(last_pump_3_ms) = millis();'
       - switch.turn_off: ventil_1
       - switch.turn_off: ventil_2
       - switch.turn_off: ventil_4
       - switch.turn_on: ventil_3
       - switch.turn_on: pumpe
-      - http_request.get:
-          url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%203%20started%20pumping"
-      - delay: 30s
+      - if:
+          condition:
+            lambda: 'return id(telegram_ready);'
+          then:
+            - http_request.get:
+                url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pot%203%20started%20pumping"
+      - delay: !lambda 'return id(pumpdauer).state * 1000;'
       - switch.turn_off: pumpe
       - switch.turn_off: ventil_3
-      - http_request.get:
-          url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%203%20stopped%20pumping"
-      - lambda: |-
-          id(pump_busy) = false;
+      - if:
+          condition:
+            lambda: 'return id(telegram_ready);'
+          then:
+            - http_request.get:
+                url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pot%203%20stopped%20pumping"
+      - lambda: 'id(pump_busy) = false;'
+
   - id: pumpe_topf_4
     mode: single
     then:
-      - lambda: |-
-          id(last_pump_4_ms) = millis();
+      - lambda: 'id(last_pump_4_ms) = millis();'
       - switch.turn_off: ventil_1
       - switch.turn_off: ventil_2
       - switch.turn_off: ventil_3
       - switch.turn_on: ventil_4
       - switch.turn_on: pumpe
-      - http_request.get:
-          url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%204%20started%20pumping"
-      - delay: 30s
+      - if:
+          condition:
+            lambda: 'return id(telegram_ready);'
+          then:
+            - http_request.get:
+                url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pot%204%20started%20pumping"
+      - delay: !lambda 'return id(pumpdauer).state * 1000;'
       - switch.turn_off: pumpe
       - switch.turn_off: ventil_4
+      - if:
+          condition:
+            lambda: 'return id(telegram_ready);'
+          then:
+            - http_request.get:
+                url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pot%204%20stopped%20pumping"
+      - lambda: 'id(pump_busy) = false;'
+
+  # ── LED Boot Blink ──────────────────────────────────────────────────
+  - id: led_boot_blink
+    mode: single
+    then:
+      - while:
+          condition:
+            lambda: 'return true;'
+          then:
+            - light.turn_on: status_led
+            - delay: 250ms
+            - light.turn_off: status_led
+            - delay: 250ms
+
+  # ── Telegram Command Handler ────────────────────────────────────────
+  # Responds to incoming Telegram bot commands.
+  # Supported: "value pot X" → replies with current moisture reading.
+  - id: handle_telegram_command
+    mode: single
+    then:
       - http_request.get:
-          url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%204%20stopped%20pumping"
-      - lambda: |-
-          id(pump_busy) = false;
+          url: !lambda |-
+            std::string msg = id(telegram_message);
+            // Convert to lowercase for case-insensitive matching
+            for (auto &c : msg) c = tolower(c);
+
+            std::string reply;
+            if (msg.find("value pot 1") != std::string::npos) {
+              reply = "Pot 1: " + to_string((int)id(feuchte_1).state) + "%25";
+            } else if (msg.find("value pot 2") != std::string::npos) {
+              reply = "Pot 2: " + to_string((int)id(feuchte_2).state) + "%25";
+            } else if (msg.find("value pot 3") != std::string::npos) {
+              reply = "Pot 3: " + to_string((int)id(feuchte_3).state) + "%25";
+            } else if (msg.find("value pot 4") != std::string::npos) {
+              reply = "Pot 4: " + to_string((int)id(feuchte_4).state) + "%25";
+            } else {
+              reply = "Unknown%20command.%20Try:%20value%20pot%201";
+            }
+
+            // URL-encode spaces in the value replies
+            std::string encoded;
+            for (char c : reply) {
+              if (c == ' ') encoded += "%20";
+              else if (c == ':') encoded += "%3A";
+              else encoded += c;
+            }
+
+            id(telegram_message) = "";
+
+            char url[512];
+            snprintf(url, sizeof(url),
+              "https://api.telegram.org/bot%s/sendMessage?chat_id=%s&text=%s",
+              "${telegram_bot_token}",
+              "${telegram_chat_id}",
+              encoded.c_str());
+            return std::string(url);
+
