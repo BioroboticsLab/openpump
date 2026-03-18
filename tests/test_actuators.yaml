@@ -1,11 +1,8 @@
 # Minimal test program — toggle pump & valves from the web UI
-# Flash with: esphome run test_actuators.yaml
+# Flash with: esphome run tests/test_actuators.yaml
 # Then open http://<ESP-IP>:80 and toggle each switch.
 #
-# TEST: When you toggle "Pumpe" ON in the web UI, the relay should
-#       physically click and the pump should run.
-#       If the pump runs when the switch shows OFF → remove "inverted: true"
-#       from all switches below and reflash.
+# RESULT: Relays are active-HIGH (no inversion needed).
 
 esphome:
   name: labor-test
@@ -42,9 +39,7 @@ web_server:
 # ── Status LED ───────────────────────────────────────────────────────
 output:
   - platform: gpio
-    pin:
-      number: GPIO2
-      inverted: true
+    pin: GPIO2
     id: status_led_gpio
 
 light:
@@ -53,42 +48,30 @@ light:
     id: status_led
     name: "Status LED"
 
-# ── Actuator Switches ────────────────────────────────────────────────
-# Currently set to inverted: true (matching valve_2.yaml).
-# If polarity is wrong, change all to inverted: false (or remove the line).
+# ── Actuator Switches (active-HIGH, no inversion) ────────────────────
 switch:
   - platform: gpio
-    pin:
-      number: GPIO17
-      inverted: true
+    pin: GPIO17
     id: pumpe
     name: "Pumpe"
     restore_mode: ALWAYS_OFF
   - platform: gpio
-    pin:
-      number: GPIO18
-      inverted: true
+    pin: GPIO18
     id: ventil_1
     name: "Ventil 1"
     restore_mode: ALWAYS_OFF
   - platform: gpio
-    pin:
-      number: GPIO19
-      inverted: true
+    pin: GPIO19
     id: ventil_2
     name: "Ventil 2"
     restore_mode: ALWAYS_OFF
   - platform: gpio
-    pin:
-      number: GPIO21
-      inverted: true
+    pin: GPIO21
     id: ventil_3
     name: "Ventil 3"
     restore_mode: ALWAYS_OFF
   - platform: gpio
-    pin:
-      number: GPIO22
-      inverted: true
+    pin: GPIO22
     id: ventil_4
     name: "Ventil 4"
     restore_mode: ALWAYS_OFF

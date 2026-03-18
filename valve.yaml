@@ -164,9 +164,7 @@ button:
 # ── Status LED ─────────────────────────────────────────────────────────
 output:
   - platform: gpio
-    pin:
-      number: ${led_pin}
-      inverted: true
+    pin: ${led_pin}
     id: status_led_gpio
 
 light:
@@ -358,40 +356,30 @@ number:
     unit_of_measurement: "s"
     mode: slider
 
-# ── Actuators (active-low relays → inverted: true) ───────────────────
+# ── Actuators ──────────────────────────────────────────────────────────
 switch:
   - platform: gpio
-    pin:
-      number: GPIO17
-      inverted: true
+    pin: GPIO17
     id: pumpe
     name: "Pumpe"
     restore_mode: ALWAYS_OFF
   - platform: gpio
-    pin:
-      number: GPIO18
-      inverted: true
+    pin: GPIO18
     id: ventil_1
     name: "Ventil 1"
     restore_mode: ALWAYS_OFF
   - platform: gpio
-    pin:
-      number: GPIO19
-      inverted: true
+    pin: GPIO19
     id: ventil_2
     name: "Ventil 2"
     restore_mode: ALWAYS_OFF
   - platform: gpio
-    pin:
-      number: GPIO21
-      inverted: true
+    pin: GPIO21
     id: ventil_3
     name: "Ventil 3"
     restore_mode: ALWAYS_OFF
   - platform: gpio
-    pin:
-      number: GPIO22
-      inverted: true
+    pin: GPIO22
     id: ventil_4
     name: "Ventil 4"
     restore_mode: ALWAYS_OFF
