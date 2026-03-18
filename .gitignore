@@ -1,0 +1,6 @@
+secrets.yaml
+*.log
+*.bin
+__pycache__/
+*.pyc
+.vscode/
