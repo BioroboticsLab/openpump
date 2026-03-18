@@ -16,17 +16,9 @@ substitutions:
 
   # Timing (used in lambdas as milliseconds)
   cooldown_ms: "3600000"          # 1 hour between pumps per zone
-  sensor_update_interval: "5s"
   check_interval: "30s"
   heartbeat_interval: "2h"        # uptime report via Telegram
   telegram_poll_interval: "5s"    # how often to poll for bot commands
-
-  # Sensor calibration (raw ADC × 100 → percentage)
-  # Tune these two points for your sensors:
-  #   cal_wet  = raw value when sensor is in water  → maps to 100 %
-  #   cal_dry  = raw value when sensor is in dry air → maps to   0 %
-  cal_wet: "0"
-  cal_dry: "330"
 
   # Status LED pin (active-low on most ESP32 DevKits)
   led_pin: "GPIO2"
@@ -160,8 +152,14 @@ button:
   - platform: template
     name: "Test Telegram"
     on_press:
-      - http_request.get:
-          url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Test%20message%20from%20ESPHome"
+      - if:
+          condition:
+            and:
+              - wifi.connected
+              - lambda: 'return id(telegram_ready);'
+          then:
+            - http_request.get:
+                url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Test%20message%20from%20ESPHome"
 
 # ── Status LED ─────────────────────────────────────────────────────────
 output:
@@ -257,7 +255,7 @@ sensor:
   - platform: template
     name: "Topf 1 Cooldown (min)"
     id: topf_1_cooldown_min
-    update_interval: ${sensor_update_interval}
+    update_interval: 5s
     unit_of_measurement: "min"
     accuracy_decimals: 0
     lambda: |-
@@ -268,7 +266,7 @@ sensor:
   - platform: template
     name: "Topf 2 Cooldown (min)"
     id: topf_2_cooldown_min
-    update_interval: ${sensor_update_interval}
+    update_interval: 5s
     unit_of_measurement: "min"
     accuracy_decimals: 0
     lambda: |-
@@ -279,7 +277,7 @@ sensor:
   - platform: template
     name: "Topf 3 Cooldown (min)"
     id: topf_3_cooldown_min
-    update_interval: ${sensor_update_interval}
+    update_interval: 5s
     unit_of_measurement: "min"
     accuracy_decimals: 0
     lambda: |-
@@ -290,7 +288,7 @@ sensor:
   - platform: template
     name: "Topf 4 Cooldown (min)"
     id: topf_4_cooldown_min
-    update_interval: ${sensor_update_interval}
+    update_interval: 5s
     unit_of_measurement: "min"
     accuracy_decimals: 0
     lambda: |-
@@ -298,12 +296,6 @@ sensor:
       uint32_t elapsed = millis() - id(last_pump_4_ms);
       uint32_t cd = ${cooldown_ms};
       return (elapsed >= cd) ? 0 : (cd - elapsed) / 60000.0;
-
-  # ── Uptime sensor (used by heartbeat) ─────────────────────────────
-  - platform: uptime
-    name: "Uptime"
-    id: esp_uptime
-    update_interval: 60s
 
 # ── User-Adjustable Parameters ────────────────────────────────────────
 number:
@@ -497,8 +489,14 @@ interval:
                     }
                     return (millis() - id(dry_1_start_ms)) >= 86400000UL;
                 then:
-                  - http_request.get:
-                      url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%201%20dry%20for%2024h"
+                  - if:
+                      condition:
+                        and:
+                          - wifi.connected
+                          - lambda: 'return id(telegram_ready);'
+                      then:
+                        - http_request.get:
+                            url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%201%20dry%20for%2024h"
                   - lambda: |-
                       id(dry_1_alerted) = true;
           else:
@@ -524,8 +522,14 @@ interval:
                     }
                     return (millis() - id(dry_2_start_ms)) >= 86400000UL;
                 then:
-                  - http_request.get:
-                      url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%202%20dry%20for%2024h"
+                  - if:
+                      condition:
+                        and:
+                          - wifi.connected
+                          - lambda: 'return id(telegram_ready);'
+                      then:
+                        - http_request.get:
+                            url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%202%20dry%20for%2024h"
                   - lambda: |-
                       id(dry_2_alerted) = true;
           else:
@@ -551,8 +555,14 @@ interval:
                     }
                     return (millis() - id(dry_3_start_ms)) >= 86400000UL;
                 then:
-                  - http_request.get:
-                      url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%203%20dry%20for%2024h"
+                  - if:
+                      condition:
+                        and:
+                          - wifi.connected
+                          - lambda: 'return id(telegram_ready);'
+                      then:
+                        - http_request.get:
+                            url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%203%20dry%20for%2024h"
                   - lambda: |-
                       id(dry_3_alerted) = true;
           else:
@@ -578,8 +588,14 @@ interval:
                     }
                     return (millis() - id(dry_4_start_ms)) >= 86400000UL;
                 then:
-                  - http_request.get:
-                      url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%204%20dry%20for%2024h"
+                  - if:
+                      condition:
+                        and:
+                          - wifi.connected
+                          - lambda: 'return id(telegram_ready);'
+                      then:
+                        - http_request.get:
+                            url: "https://api.telegram.org/bot${telegram_bot_token}/sendMessage?chat_id=${telegram_chat_id}&text=Pod%204%20dry%20for%2024h"
                   - lambda: |-
                       id(dry_4_alerted) = true;
           else:
