@@ -60,22 +60,22 @@ switch:
     name: "Pumpe"
     restore_mode: ALWAYS_OFF
   - platform: gpio
-    pin: GPIO18
+    pin: GPIO22
     id: ventil_1
     name: "Ventil 1"
     restore_mode: ALWAYS_OFF
   - platform: gpio
-    pin: GPIO19
+    pin: GPIO21
     id: ventil_2
     name: "Ventil 2"
     restore_mode: ALWAYS_OFF
   - platform: gpio
-    pin: GPIO21
+    pin: GPIO19
     id: ventil_3
     name: "Ventil 3"
     restore_mode: ALWAYS_OFF
   - platform: gpio
-    pin: GPIO22
+    pin: GPIO18
     id: ventil_4
     name: "Ventil 4"
     restore_mode: ALWAYS_OFF

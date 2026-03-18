@@ -12,7 +12,7 @@ An open-source, sensor-driven plant watering system built on [ESPHome](https://e
 - **Cooldown protection** — 1-hour cooldown per zone prevents overwatering
 - **Pump mutex** — only one zone can pump at a time, preventing pressure issues
 - **Telegram alerts** — instant notifications when pumping starts/stops
-- **Telegram bot commands** — send `value pot 1` to query live moisture readings
+- **Telegram bot commands** — send `value pod 1` to query live moisture readings
 - **Heartbeat** — periodic uptime report via Telegram (every 2 hours)
 - **Status LED** — blinks during boot/Wi-Fi reconnect, solid when connected
 - **Wi-Fi events** — Telegram notification on connect; LED feedback on disconnect
@@ -28,7 +28,7 @@ An open-source, sensor-driven plant watering system built on [ESPHome](https://e
 |-----------|-----|-------|
 | ESP32 DevKit | 1 | `esp32dev` board |
 | Capacitive soil-moisture sensor | 4 | Analog output |
-| 12 V water pump | 1 | Controlled via relay/MOSFET on GPIO5 |
+| 12 V water pump | 1 | Controlled via relay/MOSFET on GPIO17 |
 | Solenoid valve (normally closed) | 4 | Controlled via relay/MOSFET |
 | Relay module or MOSFET driver | 5 | 1 pump + 4 valves |
 | 12 V power supply | 1 | Sized for pump + valves |
@@ -132,10 +132,10 @@ openpump/
 │   ├── test_actuators.yaml       # Minimal pump/valve toggle test
 │   ├── test_sensors.yaml         # Sensor + actuator test
 │   └── test_gpio_scan.yaml       # All ADC1 GPIO scan
-├── LICENSE                       # Apache 2.0
+├── LICENSE                       # MIT
 └── README.md                     # This file
 ```
 
 ## License
 
-Licensed under the [Apache License 2.0](LICENSE).
+Licensed under the [MIT License](LICENSE).

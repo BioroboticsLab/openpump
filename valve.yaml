@@ -366,6 +366,10 @@ switch:
     id: pumpe
     name: "Pumpe"
     restore_mode: ALWAYS_OFF
+    on_turn_on:
+      - delay: 360s
+      - switch.turn_off: pumpe
+      - lambda: 'id(pump_busy) = false;'
   - platform: gpio
     pin: GPIO22
     id: ventil_1
